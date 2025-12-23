@@ -232,7 +232,7 @@ extern const std::uint8_t g_resources[{}];)";
 
 	constexpr std::string_view source_contents = R"(#include <cstdint>
 
-const std::uint8_t g_resources[{}] = {{ )";
+extern const std::uint8_t g_resources[{}] = {{ )";
 	std::string source = std::format(source_contents, raw_data.size());
 
 	source.reserve(source.size() +
