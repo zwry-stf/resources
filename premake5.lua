@@ -11,7 +11,6 @@ workspace "resources"
         architecture "x86_64"
     filter {}
     
-    local build_root = "build/%{prj.name}"
     local int_root   = "build/%{prj.name}/%{cfg.buildcfg}/%{cfg.platform}"
     
     flags { "MultiProcessorCompile" }
@@ -34,7 +33,7 @@ workspace "resources"
 project "resources"
     kind "ConsoleApp"
     targetname "%{prj.name}_%{cfg.platform}"
-    targetdir (build_root)
+    targetdir "build"
     objdir    (int_root)
     location "resources"
     
@@ -44,6 +43,6 @@ project "resources"
     }
 
     includedirs {
-        "resources/include"
+        "resources/include",
         "resources/ext"
     }

@@ -7,11 +7,16 @@
 #include <cstdint>
 #include <cstring>
 #include <format>
+#include <assert.h>
 
 #include "include/resources/common.h"
 
 
 inline static constexpr std::string_view json_path = "files.json";
+inline static constexpr std::string_view header_path = "resource_data.h";
+inline static constexpr std::string_view source_path = "resource_data.cpp";
+inline static constexpr std::string_view default_resources_path = "resources.h";
+inline static constexpr std::string_view default_resources_namespace = "resources";
 
 bool read_json(nlohmann::json& out, bool print) {
 	std::ifstream file(json_path.data());
@@ -45,10 +50,33 @@ bool read_json(nlohmann::json& out, bool print) {
 	return true;
 }
 
-int compile() {
-	constexpr std::string_view header_name = "resources.h";
-	constexpr std::string_view source_name = "resources.cpp";
+bool write_json(nlohmann::json& contents) {
+	std::ofstream file(json_path.data());
+	if (!file) {
+		std::println("failed to open '{}' for write", json_path);
+		return false;
+	}
 
+	if (!contents.contains("resources_path") ||
+		!contents["resources_path"].is_string()) {
+		contents["resources_path"] = default_resources_path;
+	}
+
+	std::string data = contents.dump(4);
+
+	file.write(data.c_str(), data.size());
+	if (!file) {
+		std::println("failed to write to '{}'", json_path);
+		return false;
+	}
+
+	file.flush();
+	file.close();
+
+	return true;
+}
+
+int compile() {
 	nlohmann::json j;
 	if (!read_json(j, true)) {
 		return 1;
@@ -63,6 +91,7 @@ int compile() {
 	// read
 	struct loaded_file {
 		int id;
+		std::string name;
 		std::vector<std::uint8_t> data;
 	};
 	std::vector<loaded_file> loaded_files;
@@ -78,6 +107,12 @@ int compile() {
 		if (!i.contains("path") ||
 			!i["path"].is_string()) {
 			std::println("entry '{}' doesn't contain path", index);
+			return 1;
+		}
+
+		if (!i.contains("name") ||
+			!i["name"].is_string()) {
+			std::println("entry '{}' doesn't contain name", index);
 			return 1;
 		}
 
@@ -107,6 +142,7 @@ int compile() {
 
 		loaded_files.emplace_back(
 			i["id"].get<int>(),
+			i["name"].get<std::string>(),
 			std::move(data)
 		);
 
@@ -167,9 +203,9 @@ int compile() {
 	);
 
 	// header file
-	std::ofstream header_file(header_name.data());
+	std::ofstream header_file(header_path.data());
 	if (!header_file) {
-		std::println("failed to open output file '{}'", header_name);
+		std::println("failed to open output file '{}'", header_path);
 		return 1;
 	}
 
@@ -181,16 +217,16 @@ extern constexpr std::uint8_t g_resources[{}];)";
 	std::string formatted_contents = std::format(header_contents, raw_data.size());
 	header_file.write(formatted_contents.data(), formatted_contents.size());
 	if (!header_file) {
-		std::println("failed to write to output file '{}'", header_name);
+		std::println("failed to write to output file '{}'", header_path);
 		return 1;
 	}
 
 	header_file.close();
 
 	// source file
-	std::ofstream source_file(source_name.data());
+	std::ofstream source_file(source_path.data());
 	if (!source_file) {
-		std::println("failed to open output file '{}'", source_name);
+		std::println("failed to open output file '{}'", source_path);
 		return 1;
 	}
 
@@ -220,31 +256,132 @@ constexpr std::uint8_t g_resources[{}] = {{ )";
 
 	source_file.write(source.data(), source.size());
 	if (!source_file) {
-		std::println("failed to write to output file '{}'", source_name);
+		std::println("failed to write to output file '{}'", source_path);
 		return 1;
 	}
 
 	source_file.flush();
 	source_file.close();
 
+	// build resources file (ids)
+	std::string resources_path = default_resources_path.data();
+	if (j.contains("resources_path") &&
+		j["resources_path"].is_string()) {
+		resources_path = j["resources_path"].get<std::string>();
+	}
+
+	std::ofstream out_resources(resources_path);
+	if (!out_resources) {
+		std::println("failed to open output file '{}'", resources_path);
+		return 1;
+	}
+
+	std::string resources_namespace = default_resources_namespace.data();
+	if (j.contains("resources_namespace") &&
+		j["resources_namespace"].is_string()) {
+		resources_namespace = j["resources_namespace"].get<std::string>();
+	}
+
+	constexpr std::string_view resources_contents = R"(#pragma once
+
+namespace {} {{
+)";
+
+	std::string resources_data = std::format(resources_contents, resources_namespace);
+	for (auto& f : loaded_files) {
+		resources_data += std::format("    inline constexpr int {} = {};\n", f.name, f.id);
+	}
+
+	resources_data += "}";
+
+	out_resources.write(resources_data.data(), resources_data.size());
+	if (!out_resources) {
+		std::println("failed to write to output file '{}'", resources_path);
+		return 1;
+	}
+
+	out_resources.flush();
+	out_resources.close();
+
 	std::println("successfully compiled {} resources", loaded_files.size());
 
 	return 0;
 }
 
+int set_option(int num_args, char** args) {
+	assert(num_args == 2);
+	(void)num_args;
+
+	auto* option = args[0];
+	auto* value = args[1];
+	if (strlen(value) == 0u) {
+		std::println("value is empty");
+		return -1;
+	}
+
+	if (strcmp(option, "resources_path") == 0) {
+
+		nlohmann::json j;
+		read_json(j, false);
+
+		j["resources_path"] = value;
+
+		if (!write_json(j))
+			return 1;
+	}
+	else if (strcmp(option, "resources_namespace") == 0) {
+		nlohmann::json j;
+		read_json(j, false);
+
+		j["resources_namespace"] = value;
+
+		if (!write_json(j))
+			return 1;
+	}
+	else {
+		std::println("invalid option");
+		std::println("supported options: resources_path|resources_namespace");
+		return -1;
+	}
+
+	std::println("successfully set '{}' for option '{}'", value, option);
+
+	return 0;
+}
+
+std::string generate_name(std::string path) {
+	auto pos = path.find("/");
+	if (pos != std::string::npos)
+		path = path.substr(pos + 1u);
+	pos = path.find(".");
+	if (pos != std::string::npos)
+		path = path.substr(0, pos);
+
+	// replace unusable characters
+	for (auto& c : path) {
+		if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_') {
+			c = '_';
+		}
+	}
+
+	// first character can't be a digit
+	if (std::isdigit(static_cast<unsigned char>(path[0]))) { 
+		path.insert(path.begin(), '_');
+	}
+
+	return path;
+}
+
 int add(int num_files, char** files) {
+	assert(num_files > 0);
+
 	// read file first
 	nlohmann::json j;
 	read_json(j, false); // ignore return value, start with empty json if read fails
 
-	if (j.contains("files") &&
-		!j["files"].is_array()) {
-		std::println("invalid json file, please remove first");
-		return 1;
-	}
-
 	int start_id = 0;
-	if (j.contains("files")) {
+	if (j.contains("files") &&
+		j["files"].is_array()) {
 		for (auto& i : j["files"]) {
 			if (i.contains("id") &&
 				i["id"].is_number_integer() &&
@@ -255,45 +392,76 @@ int add(int num_files, char** files) {
 			}
 		}
 	}
+	else {
+		j["files"] = nlohmann::json::array();
+	}
 
+	int added_files = 0;
 	for (int i = 0; i < num_files; i++) {
-		char* path = files[i];
+		std::string path = files[i];
 
 		if (!std::filesystem::exists(path)) {
 			std::println("failed to find file '{}'", path);
 			return 1;
 		}
 
+		for (auto& f : j["files"]) {
+			if (f.contains("path") &&
+				f["path"].is_string()) {
+				if (f["path"].get<std::string>() == path) {
+					std::println("'{}' already added, ignoring...", path);
+					return 1;
+				}
+			}
+		}
+
+		std::string generated_name = generate_name(path);
+
+		int modified_added = 0;
+		while (true) {
+			bool found = false;
+
+			std::string name = generated_name;
+			if (modified_added != 0)
+				name += std::to_string(modified_added);
+
+			for (auto& f : j["files"]) {
+				if (f.contains("name") &&
+					f["name"].is_string()) {
+					if (f["name"].get<std::string>() == name) {
+						found = true;
+						break;
+					}
+				}
+			}
+			if (!found) {
+				generated_name = name;
+				break;
+			}
+
+			modified_added++;
+		}
+
 		nlohmann::json o;
 		o["path"] = path;
 		o["id"] = start_id;
+		o["name"] = generated_name;
 
 		j["files"].push_back(o);
 		start_id++;
+		added_files++;
 	}
 
-	std::ofstream file(json_path.data());
-	if (!file) {
-		std::println("failed to open '{}' for write", json_path);
+	if (!write_json(j))
 		return 1;
-	}
 
-	std::string data = j.dump(4);
-
-	file.write(data.c_str(), data.size());
-	if (!file) {
-		std::println("failed to write to '{}'", json_path);
-		return 1;
-	}
-
-	file.flush();
-	file.close();
+	std::println("successfully added {} files", added_files);
 
 	return 0;
 }
 
 void print_usage() {
-	std::println("usage: resources -add <file...> | -compile");
+	std::println("usage: resources -add <file...> | -compile | -set_option <option> <value>");
 }
 
 int main(int argc, char* argv[]) {
@@ -317,6 +485,16 @@ int main(int argc, char* argv[]) {
 		}
 
 		return add(num_files, &argv[2]);
+	}
+	else if (strcmp(arg, "-set_option") == 0) {
+		const int num_args = argc - 2;
+		if (num_args != 2) {
+			std::println("unknown arguments '{}'", arg);
+			print_usage();
+			return -1;
+		}
+
+		return set_option(num_args, &argv[2]);
 	}
 	else {
 		std::println("unknown argument '{}'", arg);
