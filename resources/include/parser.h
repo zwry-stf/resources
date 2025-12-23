@@ -6,8 +6,8 @@
 
 namespace resources {
 	struct parsed_file {
-		const std::uint8_t* data;
-		std::size_t size;
+		const std::uint8_t* data{};
+		std::size_t size{};
 	};
 
 	bool parse(const std::uint8_t* arr, std::size_t size, int id, parsed_file& out) {
@@ -22,7 +22,7 @@ namespace resources {
 		);
 
 		if (header.num_files == 0u)
-			return true;
+			return false;
 
 		std::size_t data_pointer = 0u;
 		for (std::size_t i = 0u; i < header.num_files; i++) {
