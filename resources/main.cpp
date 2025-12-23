@@ -350,7 +350,7 @@ int set_option(int num_args, char** args) {
 }
 
 std::string generate_name(std::string path) {
-	auto pos = path.find("/");
+	auto pos = path.find_last_of("/");
 	if (pos != std::string::npos)
 		path = path.substr(pos + 1u);
 
