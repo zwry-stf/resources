@@ -212,7 +212,7 @@ int compile() {
 	constexpr std::string_view header_contents = R"(#pragma once
 #include <cstdint>
 
-extern constexpr std::uint8_t g_resources[{}];)";
+extern const std::uint8_t g_resources[{}];)";
 
 	std::string formatted_contents = std::format(header_contents, raw_data.size());
 	header_file.write(formatted_contents.data(), formatted_contents.size());
@@ -232,7 +232,7 @@ extern constexpr std::uint8_t g_resources[{}];)";
 
 	constexpr std::string_view source_contents = R"(#include <cstdint>
 
-constexpr std::uint8_t g_resources[{}] = {{ )";
+const std::uint8_t g_resources[{}] = {{ )";
 	std::string source = std::format(source_contents, raw_data.size());
 
 	source.reserve(source.size() +
