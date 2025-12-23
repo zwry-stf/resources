@@ -353,9 +353,6 @@ std::string generate_name(std::string path) {
 	auto pos = path.find("/");
 	if (pos != std::string::npos)
 		path = path.substr(pos + 1u);
-	pos = path.find(".");
-	if (pos != std::string::npos)
-		path = path.substr(0, pos);
 
 	// replace unusable characters
 	for (auto& c : path) {
