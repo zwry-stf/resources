@@ -6,10 +6,10 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="include\common.h">
+    <ClInclude Include="include\resources\common.h">
       <Filter>include</Filter>
     </ClInclude>
-    <ClInclude Include="include\parser.h">
+    <ClInclude Include="include\resources\parser.h">
       <Filter>include</Filter>
     </ClInclude>
   </ItemGroup>

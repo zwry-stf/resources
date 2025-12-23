@@ -39,10 +39,11 @@ project "resources"
     location "resources"
     
     files {
-        "resources/include/**.h",
+        "resources/include/resources/**.h",
         "resources/main.cpp",
     }
 
     includedirs {
+        "resources/include"
         "resources/ext"
     }

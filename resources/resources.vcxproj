@@ -106,8 +106,8 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="include\common.h" />
-    <ClInclude Include="include\parser.h" />
+    <ClInclude Include="include\resources\common.h" />
+    <ClInclude Include="include\resources\parser.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />

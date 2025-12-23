@@ -8,7 +8,7 @@
 #include <cstring>
 #include <format>
 
-#include "include/common.h"
+#include "include/resources/common.h"
 
 
 inline static constexpr std::string_view json_path = "files.json";
