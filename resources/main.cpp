@@ -4,7 +4,9 @@
 #include <print>
 #include <nlohmann/json.hpp>
 #include <filesystem>
-#include <sstream>
+#include <cstdint>
+#include <cstring>
+#include <format>
 
 #include "include/common.h"
 
