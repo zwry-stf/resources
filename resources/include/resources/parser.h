@@ -24,7 +24,6 @@ namespace resources {
 		if (header.num_files == 0u)
 			return false;
 
-		std::size_t data_pointer = 0u;
 		for (std::size_t i = 0u; i < header.num_files; i++) {
 			const std::size_t offset = sizeof(header) + i * sizeof(file_header);
 			if (size < offset + sizeof(file_header))
