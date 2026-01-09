@@ -17,6 +17,7 @@ inline static constexpr std::string_view header_path = "resource_data.h";
 inline static constexpr std::string_view source_path = "resource_data.cpp";
 inline static constexpr std::string_view default_resources_path = "resources.h";
 inline static constexpr std::string_view default_resources_namespace = "resources";
+inline static constexpr std::string_view default_resources_variable = "g_resources";
 
 bool read_json(nlohmann::json& out, bool print) {
 	std::ifstream file(json_path.data());
@@ -209,12 +210,18 @@ int compile() {
 		return 1;
 	}
 
+	std::string resources_variable = default_resources_variable.data();
+	if (j.contains("resources_variable") &&
+		j["resources_variable"].is_string()) {
+		resources_variable = j["resources_variable"].get<std::string>();
+	}
+
 	constexpr std::string_view header_contents = R"(#pragma once
 #include <cstdint>
 
-extern const std::uint8_t g_resources[{}];)";
+extern const std::uint8_t {}[{}];)";
 
-	std::string formatted_contents = std::format(header_contents, raw_data.size());
+	std::string formatted_contents = std::format(header_contents, resources_variable, raw_data.size());
 	header_file.write(formatted_contents.data(), formatted_contents.size());
 	if (!header_file) {
 		std::println("failed to write to output file '{}'", header_path);
@@ -232,8 +239,8 @@ extern const std::uint8_t g_resources[{}];)";
 
 	constexpr std::string_view source_contents = R"(#include <cstdint>
 
-extern const std::uint8_t g_resources[{}] = {{ )";
-	std::string source = std::format(source_contents, raw_data.size());
+extern const std::uint8_t {}[{}] = {{ )";
+	std::string source = std::format(source_contents, resources_variable, raw_data.size());
 
 	source.reserve(source.size() +
 		raw_data.size() * 6u /* "0x00, " */
@@ -338,9 +345,18 @@ int set_option(int num_args, char** args) {
 		if (!write_json(j))
 			return 1;
 	}
+	else if (strcmp(option, "resources_variable") == 0) {
+		nlohmann::json j;
+		read_json(j, false);
+
+		j["resources_variable"] = value;
+
+		if (!write_json(j))
+			return 1;
+	}
 	else {
 		std::println("invalid option");
-		std::println("supported options: resources_path|resources_namespace");
+		std::println("supported options: resources_path|resources_namespace|resources_variable");
 		return -1;
 	}
 
