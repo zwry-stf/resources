@@ -315,6 +315,10 @@ namespace {} {{
 	return 0;
 }
 
+void print_supported_options() {
+	std::println("supported options: resources_path|resources_namespace|resources_variable");
+}
+
 int set_option(int num_args, char** args) {
 	assert(num_args == 2);
 	(void)num_args;
@@ -356,7 +360,7 @@ int set_option(int num_args, char** args) {
 	}
 	else {
 		std::println("invalid option");
-		std::println("supported options: resources_path|resources_namespace|resources_variable");
+		print_supported_options();
 		return -1;
 	}
 
@@ -502,8 +506,8 @@ int main(int argc, char* argv[]) {
 	else if (strcmp(arg, "-set_option") == 0) {
 		const int num_args = argc - 2;
 		if (num_args != 2) {
-			std::println("unknown arguments '{}'", arg);
-			print_usage();
+			std::println("invalid arguments '{}'", arg);
+			print_supported_options();
 			return -1;
 		}
 
