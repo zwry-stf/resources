@@ -1,4 +1,11 @@
 build/
+vcpkg_installed/
 .vs/
-.git/
 out/
+
+*.sln
+*.slnx
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.vcxproj.filters.user
