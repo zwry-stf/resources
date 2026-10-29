@@ -15,6 +15,9 @@
     <ClInclude Include="include\resources\parser.h">
       <Filter>include\resources</Filter>
     </ClInclude>
+    <ClInclude Include="include\resources\writer.h">
+      <Filter>include\resources</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />

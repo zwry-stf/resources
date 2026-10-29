@@ -7,6 +7,8 @@
 #include <cstdint>
 #include <cstring>
 #include <format>
+#include <limits>
+#include <random>
 #include <assert.h>
 
 #include "include/resources/common.h"
@@ -77,7 +79,7 @@ bool write_json(nlohmann::json& contents) {
 	return true;
 }
 
-int compile() {
+int compile(const char* binary_path = nullptr) {
 	nlohmann::json j;
 	if (!read_json(j, true)) {
 		return 1;
@@ -158,12 +160,24 @@ int compile() {
 	// build data
 	std::vector<std::uint8_t> raw_data;
 	std::vector<std::uint8_t> file_data;
-	resources::global_header global_header;
-	global_header.num_files = loaded_files.size();
+	resources::global_header global_header{};
+	if (loaded_files.size() > (std::numeric_limits<std::uint32_t>::max() - sizeof(global_header)) / sizeof(resources::file_header)) {
+		std::println("too many resource files");
+		return 1;
+	}
+	global_header.num_files = static_cast<std::uint32_t>(loaded_files.size());
+	global_header.use_encryption = j.value("use_encryption", false);
+	std::random_device random;
 	raw_data.resize(sizeof(global_header));
+
+	const auto max_payload_size = std::numeric_limits<std::uint32_t>::max() - sizeof(global_header) - loaded_files.size() * sizeof(resources::file_header);
 
 	// add files
 	for (auto& f : loaded_files) {
+		if (f.data.size() > resources::k_max_resource_size || f.data.size() > max_payload_size - file_data.size()) {
+			std::println("resource archive exceeds its 32-bit size limit");
+			return 1;
+		}
 		const std::size_t offset = file_data.size();
 		file_data.resize(file_data.size() + f.data.size());
 		std::memcpy(
@@ -172,10 +186,18 @@ int compile() {
 			f.data.size()
 		);
 
-		resources::file_header header;
+		resources::file_header header{};
 		header.id = f.id;
-		header.data_offset = offset;
-		header.data_size = f.data.size();
+		header.data_offset = static_cast<std::uint32_t>(offset);
+		header.data_size = static_cast<std::uint32_t>(f.data.size());
+		if (global_header.use_encryption) {
+			for (auto& byte : header.encryption_key) {
+				byte = static_cast<std::uint8_t>(random());
+			}
+			std::uint8_t key[sizeof(header.encryption_key)];
+			resources::derive_rc4_key(header.encryption_key, key);
+			resources::rc4_crypt(file_data.data() + offset, f.data.size(), key, sizeof(key));
+		}
 
 		const std::size_t raw_offset = raw_data.size();
 		raw_data.resize(raw_data.size() + sizeof(header));
@@ -188,7 +210,7 @@ int compile() {
 
 	// add global header
 	const std::size_t raw_data_offset = raw_data.size();
-	global_header.data_pointer = raw_data_offset;
+	global_header.data_pointer = static_cast<std::uint32_t>(raw_data_offset);
 	std::memcpy(
 		raw_data.data(),
 		&global_header,
@@ -203,72 +225,83 @@ int compile() {
 		file_data.size()
 	);
 
-	// header file
-	std::ofstream header_file(header_path.data());
-	if (!header_file) {
-		std::println("failed to open output file '{}'", header_path);
-		return 1;
+	if (binary_path != nullptr) {
+		std::ofstream output(binary_path, std::ios::binary);
+		if (!output || !output.write(reinterpret_cast<const char*>(raw_data.data()),
+			static_cast<std::streamsize>(raw_data.size())) || !output.flush()) {
+			std::println("failed to write output file '{}'", binary_path);
+			return 1;
+		}
 	}
+	else {
+		// header file
+		std::ofstream header_file(header_path.data());
+		if (!header_file) {
+			std::println("failed to open output file '{}'", header_path);
+			return 1;
+		}
 
-	std::string resources_variable = default_resources_variable.data();
-	if (j.contains("resources_variable") &&
-		j["resources_variable"].is_string()) {
-		resources_variable = j["resources_variable"].get<std::string>();
+		std::string resources_variable = default_resources_variable.data();
+		if (j.contains("resources_variable") &&
+			j["resources_variable"].is_string()) {
+			resources_variable = j["resources_variable"].get<std::string>();
+		}
+
+		constexpr std::string_view header_contents = R"(#pragma once
+	#include <cstdint>
+
+	extern const std::uint8_t {}[{}];)";
+
+		std::string formatted_contents = std::format(header_contents, resources_variable, raw_data.size());
+		header_file.write(formatted_contents.data(), formatted_contents.size());
+		if (!header_file) {
+			std::println("failed to write to output file '{}'", header_path);
+			return 1;
+		}
+
+		header_file.close();
+
+		// source file
+		std::ofstream source_file(source_path.data());
+		if (!source_file) {
+			std::println("failed to open output file '{}'", source_path);
+			return 1;
+		}
+
+		constexpr std::string_view source_contents = R"(#include <cstdint>
+
+	extern const std::uint8_t {}[{}] = {{ )";
+		std::string source = std::format(source_contents, resources_variable, raw_data.size());
+
+		source.reserve(source.size() +
+			raw_data.size() * 6u /* "0x00, " */
+		);
+		// format data to hex array
+		for (std::size_t i = 0u; i < raw_data.size(); i++) {
+			const bool last = i == raw_data.size() - 1u;
+
+			source += "0x";
+			constexpr char hex[] = "0123456789ABCDEF";
+
+			const std::uint8_t b = raw_data[i];
+			source += hex[b >> 4];
+			source += hex[b & 0x0F];
+
+			if (!last)
+				source += ", ";
+		}
+		source += " };";
+
+		source_file.write(source.data(), source.size());
+		if (!source_file) {
+			std::println("failed to write to output file '{}'", source_path);
+			return 1;
+		}
+
+		source_file.flush();
+		source_file.close();
+
 	}
-
-	constexpr std::string_view header_contents = R"(#pragma once
-#include <cstdint>
-
-extern const std::uint8_t {}[{}];)";
-
-	std::string formatted_contents = std::format(header_contents, resources_variable, raw_data.size());
-	header_file.write(formatted_contents.data(), formatted_contents.size());
-	if (!header_file) {
-		std::println("failed to write to output file '{}'", header_path);
-		return 1;
-	}
-
-	header_file.close();
-
-	// source file
-	std::ofstream source_file(source_path.data());
-	if (!source_file) {
-		std::println("failed to open output file '{}'", source_path);
-		return 1;
-	}
-
-	constexpr std::string_view source_contents = R"(#include <cstdint>
-
-extern const std::uint8_t {}[{}] = {{ )";
-	std::string source = std::format(source_contents, resources_variable, raw_data.size());
-
-	source.reserve(source.size() +
-		raw_data.size() * 6u /* "0x00, " */
-	); 
-	// format data to hex array
-	for (std::size_t i = 0u; i < raw_data.size(); i++) {
-		const bool last = i == raw_data.size() - 1u;
-
-		source += "0x";
-		constexpr char hex[] = "0123456789ABCDEF";
-
-		const std::uint8_t b = raw_data[i];
-		source += hex[b >> 4];
-		source += hex[b & 0x0F];
-
-		if (!last)
-			source += ", ";
-	}
-	source += " };";
-
-	source_file.write(source.data(), source.size());
-	if (!source_file) {
-		std::println("failed to write to output file '{}'", source_path);
-		return 1;
-	}
-
-	source_file.flush();
-	source_file.close();
 
 	// build resources file (ids)
 	std::string resources_path = default_resources_path.data();
@@ -478,7 +511,7 @@ int add(int num_files, char** files) {
 }
 
 void print_usage() {
-	std::println("usage: resources -add <file...> | -compile | -set_option <option> <value>");
+	std::println("usage: resources -add <file...> | -compile | -compile_file <output.bin> | -set_option <option> <value>");
 }
 
 int main(int argc, char* argv[]) {
@@ -493,6 +526,13 @@ int main(int argc, char* argv[]) {
 			std::println("compile expects no arguments, ignoring...");
 		}
 		return compile();
+	}
+	else if (strcmp(arg, "-compile_file") == 0) {
+		if (argc != 3) {
+			print_usage();
+			return 1;
+		}
+		return compile(argv[2]);
 	}
 	else if (strcmp(arg, "-add") == 0) {
 		const int num_files = argc - 2;
